@@ -1,19 +1,16 @@
 #!/bin/rc
-# Minimal Plan 9 agent.
-# Protocol: the model replies with brief reasoning then ONE command in a code
-# fence; we run it (as a script file, so multi-line commands work) and feed the
-# output back as a real `user` turn. A reply containing DONE ends the loop.
+# plan9-agent -- a tiny interactive coding agent for Plan 9 / 9front.
 #
-# The conversation is a real messages array (system/user/assistant). The Plan 9
-# reference is loaded from plan9.txt at runtime. The transcript is mirrored back
-# to the Mac (/up) so Claude can watch.
+# Type a task at the prompt. The model issues ONE rc command at a time inside a
+# code fence; we run it and feed the real output back, until it answers with a
+# DONE message. Then it prompts you again. Type quit (or exit) to leave.
+#
+# It talks to an OpenAI-style chat endpoint (here a Mac-side proxy to Claude).
+# The Plan 9 reference is loaded from plan9.txt. Trails mirror to the Mac (/up).
 
 url=http://10.0.2.2:8000/claude
 model=claude-haiku-4-5-20251001
 oifs=$ifs
-
-# ---- the task (edit this line; re-run with `r agent.rc`) ----
-task='Invent and build a small program of your own design -- you choose what it does, but make it something fun or visually interesting that prints to the terminal (for example: ASCII art, a generated pattern, a tiny simulation, a small puzzle or game of chance). Write the source in /tmp, build it (an rc script, or C compiled with 6c then 6l), run it, and show me its real output. The program must finish and exit on its own -- no waiting for input, no infinite loop. When it has actually run and you have seen its output, finish with DONE and tell me what you made.'
 
 sysbase='You are an agent on a Plan 9 (9front) computer using the rc shell.
 
@@ -28,7 +25,7 @@ Example of a command turn:
 ls /bin
 ```
 
-Run only text commands that print and exit -- do NOT start graphical or interactive programs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
+Most commands should be text commands that print and exit. To run a GRAPHICAL or INTERACTIVE program (one that opens a window or waits for input), launch it in its own window: window PROG -- this opens a new rio window and returns immediately, so it will NOT hang the loop. Never run a graphical or interactive program directly without window, as that hangs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
 
 To FINISH: send a message with NO code fence that begins with DONE, followed by your final answer in plain prose (no code fences).
 
@@ -57,58 +54,79 @@ fn dbg {
 	upload /tmp/dbg
 }
 
-# load the Plan 9 reference from the Mac bridge and build the full system prompt
-hget http://10.0.2.2:8000/plan9.txt >/tmp/plan9
-{ echo $sysbase; echo; cat /tmp/plan9 } >/tmp/sys
-
-# seed the conversation with the task as the first user message
-echo $task >/tmp/task
-{ echo -n '{"role":"user","content":"'; esc /tmp/task; echo -n '"}' } >/tmp/messages
-
-for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
-	# build request: system message + the running messages array
-	{
-		echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
-		esc /tmp/sys
-		echo -n '"},'
-		cat /tmp/messages
-		echo -n '],"stream":false}'
-	} >/tmp/req.json
-
-	ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
-	hget -p $rq $url >/tmp/resp.json
-
-	# extract content; unescape JSON escapes, turning \n back into real newlines
-	sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
-	awk '{ gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
-	       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n"); print }' /tmp/raw >/tmp/content
-
-	# decide: if the reply contains a command fence, RUN it -- ignoring any premature
-	# DONE, since the model cannot know output it has not seen. Only a fence-free
-	# reply is allowed to finish via DONE. This defeats one-shot hallucinated runs.
-	if(grep '```' /tmp/content >/dev/null){
-		# command = the lines inside the FIRST ``` fence only (one command per turn)
-		awk '/^```/{n++; next} n==1{print}' /tmp/content >/tmp/cmd
-	}
-	if not {
-		if(grep DONE /tmp/content >/dev/null){
-			echo; echo '### AGENT FINAL ANSWER:'; sed 's/.*DONE[: ]*//' /tmp/content; echo
-			dbg
-			exit 0
-		}
-		if not {
-			cp /tmp/content /tmp/cmd	# bare command (small-model style)
-		}
-	}
-
-	echo; echo '### model runs:'; cat /tmp/cmd; echo
-	@{ rc /tmp/cmd } >/tmp/out >[2=1]
+fn runcmd {	# run /tmp/cmd, but never let a command hang the loop (kill after a timeout)
+	echo; echo '### runs:'; cat /tmp/cmd; echo
+	rc /tmp/cmd >/tmp/out >[2=1] &
+	p=$apid
+	{ sleep 15; echo kill >/proc/$p/note } >[2]/dev/null &
+	w=$apid
+	wait $p
+	echo kill >/proc/$w/note >[2]/dev/null	# stop the watchdog if cmd finished first
 	echo '### output:'; cat /tmp/out
-	# record the turn as real roles
 	addmsg assistant /tmp/content
 	{ echo 'Command output:'; cat /tmp/out } >/tmp/usermsg
 	addmsg user /tmp/usermsg
 }
 
-echo '(iteration limit hit)'
-dbg
+# load the Plan 9 reference and build the full system prompt once
+hget http://10.0.2.2:8000/plan9.txt >/tmp/plan9
+{ echo $sysbase; echo; cat /tmp/plan9 } >/tmp/sys
+
+echo 'plan9-agent ready. Type a task and press enter (quit to exit).'
+
+while(~ 1 1){
+	echo
+	echo -n 'agent> '
+	read >/tmp/task
+	if(~ `{cat /tmp/task} quit exit){
+		echo bye.
+		exit 0
+	}
+
+	# fresh conversation seeded with the typed task
+	{ echo -n '{"role":"user","content":"'; esc /tmp/task; echo -n '"}' } >/tmp/messages
+	echo no >/tmp/done
+
+	for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
+		if(~ `{cat /tmp/done} no){
+			# build request: system message + the running messages array
+			{
+				echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
+				esc /tmp/sys
+				echo -n '"},'
+				cat /tmp/messages
+				echo -n '],"stream":false}'
+			} >/tmp/req.json
+
+			ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
+			hget -p $rq $url >/tmp/resp.json
+
+			sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
+			awk '{ gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
+			       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n"); print }' /tmp/raw >/tmp/content
+
+			# if a command fence is present, run it (ignore premature DONE);
+			# only a fence-free reply may finish via DONE.
+			if(grep '```' /tmp/content >/dev/null){
+				awk '/^```/{n++; next} n==1{print}' /tmp/content >/tmp/cmd
+				runcmd
+			}
+			if not {
+				if(grep DONE /tmp/content >/dev/null){
+					echo; echo '### answer:'; sed 's/.*DONE[: ]*//' /tmp/content; echo
+					echo yes >/tmp/done
+					dbg
+				}
+				if not {
+					cp /tmp/content /tmp/cmd	# bare command (small-model style)
+					runcmd
+				}
+			}
+		}
+	}
+
+	if(~ `{cat /tmp/done} no){
+		echo '(hit the step limit without finishing)'
+		dbg
+	}
+}
