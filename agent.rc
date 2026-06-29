@@ -1,37 +1,38 @@
 #!/bin/rc
 # Minimal Plan 9 agent.
-# Protocol (tuned for small models): every model reply IS a shell command, which
-# we run and feed back as a real `user` turn -- UNLESS the reply starts with DONE,
-# which ends the loop with a final answer.
+# Protocol: the model replies with brief reasoning then ONE command in a code
+# fence; we run it (as a script file, so multi-line commands work) and feed the
+# output back as a real `user` turn. A reply containing DONE ends the loop.
 #
-# The conversation is kept as a proper messages array (system/user/assistant/...),
-# not a single labeled blob -- otherwise small models imitate the role labels.
-# The transcript is mirrored back to the Mac (/up) so Claude can watch.
+# The conversation is a real messages array (system/user/assistant). The Plan 9
+# reference is loaded from plan9.txt at runtime. The transcript is mirrored back
+# to the Mac (/up) so Claude can watch.
 
 url=http://10.0.2.2:8000/claude
 model=claude-haiku-4-5-20251001
 oifs=$ifs
 
 # ---- the task (edit this line; re-run with `r agent.rc`) ----
-task='Run the program on this machine that prints a random Nietzsche quote (it may be named nietzsche, in /bin or /bin/games) and show me one quote. Then find the file its quotes come from and tell me how many quotes it contains.'
+task='Invent and build a small program of your own design -- you choose what it does, but make it something fun or visually interesting that prints to the terminal (for example: ASCII art, a generated pattern, a tiny simulation, a small puzzle or game of chance). Write the source in /tmp, build it (an rc script, or C compiled with 6c then 6l), run it, and show me its real output. The program must finish and exit on its own -- no waiting for input, no infinite loop. When it has actually run and you have seen its output, finish with DONE and tell me what you made.'
 
-sys='You are an agent on a Plan 9 (9front) computer using the rc shell (NOT bash/Linux).
+sysbase='You are an agent on a Plan 9 (9front) computer using the rc shell.
 
-Work ONE STEP AT A TIME. Reply with brief reasoning, then EXACTLY ONE command inside a code fence with no language tag, like:
+Work ONE STEP AT A TIME, and ACTUALLY run each step -- never fake it:
+- Reply with brief reasoning, then EXACTLY ONE command inside a code fence with no language tag.
+- Put NOTHING after the fence. Do NOT predict or write what the output will be. End your message at the fence and wait.
+- Do NOT put the word DONE in a message that contains a command.
+- You will then be shown the REAL output. Only after you have seen real output do you continue.
+
+Example of a command turn:
 ```
 ls /bin
 ```
-Then STOP and wait. Do NOT issue multiple commands at once, and NEVER guess or narrate output you have not actually been shown.
 
-This is Plan 9, not Linux. Important differences:
-- Pipes (a | b), && and || work. Do NOT use <(...), <<<, or $(...).
-- There is NO head, tail, or find. For the first N lines use: sed 5q file. To search the file tree use: du -a /dir | grep name. To read a file use cat.
-- ls has no -a; use ls -l, or lc to list in columns.
-- Redirect stderr with >[2]file, not 2>file.
-- Run only text commands that print and exit. Do NOT start graphical or interactive programs.
-- If a program is an rc script, cat it to see how it works.
+Run only text commands that print and exit -- do NOT start graphical or interactive programs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
 
-When you can answer the task, reply with DONE followed by your final answer, with NO code fence.'
+To FINISH: send a message with NO code fence that begins with DONE, followed by your final answer in plain prose (no code fences).
+
+A reference for this system follows.'
 
 fn esc {	# print file $1 as an escaped JSON string body (no surrounding quotes)
 	awk 'BEGIN{ORS=""}
@@ -56,9 +57,12 @@ fn dbg {
 	upload /tmp/dbg
 }
 
+# load the Plan 9 reference from the Mac bridge and build the full system prompt
+hget http://10.0.2.2:8000/plan9.txt >/tmp/plan9
+{ echo $sysbase; echo; cat /tmp/plan9 } >/tmp/sys
+
 # seed the conversation with the task as the first user message
 echo $task >/tmp/task
-echo $sys >/tmp/sys
 { echo -n '{"role":"user","content":"'; esc /tmp/task; echo -n '"}' } >/tmp/messages
 
 for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
@@ -74,15 +78,17 @@ for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
 	ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
 	hget -p $rq $url >/tmp/resp.json
 
-	# extract content, unescape the JSON escapes we care about
+	# extract content; unescape JSON escapes, turning \n back into real newlines
 	sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
-	sed 's/\\u003c/</g; s/\\u003e/>/g; s/\\u0026/\&/g; s/\\"/"/g; s/\\t/ /g; s/\\n/ /g' /tmp/raw >/tmp/content
+	awk '{ gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
+	       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n"); print }' /tmp/raw >/tmp/content
 
-	# decide: a fenced command, a DONE final answer, or (fallback) a bare command
+	# decide: if the reply contains a command fence, RUN it -- ignoring any premature
+	# DONE, since the model cannot know output it has not seen. Only a fence-free
+	# reply is allowed to finish via DONE. This defeats one-shot hallucinated runs.
 	if(grep '```' /tmp/content >/dev/null){
-		# pull out what's between the first pair of ``` and clean it up
-		awk -F '```' '{print $2}' /tmp/content >/tmp/cmd0
-		sed 's/^ *//; s/^sh //; s/^rc //; s/^bash //; s/`//g' /tmp/cmd0 >/tmp/cmd
+		# command = the lines inside the FIRST ``` fence only (one command per turn)
+		awk '/^```/{n++; next} n==1{print}' /tmp/content >/tmp/cmd
 	}
 	if not {
 		if(grep DONE /tmp/content >/dev/null){
@@ -95,9 +101,8 @@ for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
 		}
 	}
 
-	echo; echo '### model runs:' `{cat /tmp/cmd}
-	ifs=(); c=`{cat /tmp/cmd}; ifs=$oifs
-	@{ rc -c $c } >/tmp/out >[2=1]
+	echo; echo '### model runs:'; cat /tmp/cmd; echo
+	@{ rc /tmp/cmd } >/tmp/out >[2=1]
 	echo '### output:'; cat /tmp/out
 	# record the turn as real roles
 	addmsg assistant /tmp/content

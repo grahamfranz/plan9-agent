@@ -1,0 +1,33 @@
+PLAN 9 / 9front QUICK REFERENCE (the machine you are on; it is NOT Linux).
+
+Shell is rc, not bash:
+- Pipes work: a | b.  Logical: cmd && cmd, cmd || cmd.
+- No $(...). Command substitution is `{cmd}. Variables are lists: x=(a b); $x.
+- Redirect: >file  >>file  <file.  Stderr: >[2]file.  Merge stderr into stdout: >[2=1].
+- No bash process substitution <(...), and no <<< here-strings.
+- Conditionals: if(test -f x){ ... }; if not { ... }.  Loops: for(i in a b c){ ... }.
+
+Commands that DIFFER from Linux:
+- No head or tail. First N lines: sed Nq file  (e.g. sed 10q file). To see a whole file: cat file.
+- No find. Search the file tree with: du -a /dir | grep name   (or the walk command).
+- ls flags are -lmnpqrst (NO -a). Use lc for a columnar listing.
+- cat grep wc sort uniq sed awk echo cp mv rm mkdir chmod all exist and work normally.
+- grep -c counts matching lines; grep -n shows line numbers.
+- file NAME reports a file's type.
+
+Filesystem:
+- Programs: /bin and /bin/games.  Data/libraries: /lib.  Config: /lib/ndb, etc.
+- THE ENTIRE OS SOURCE is under /sys/src. Command sources live there, e.g.
+  /sys/src/cmd and /sys/src/games. To rebuild a program: cd to its source dir and run mk.
+- Manuals: man NAME (e.g. man ls). Plan 9 man pages are short and authoritative.
+
+Writing and compiling C (it differs from Linux C):
+- Headers: #include <u.h> then #include <libc.h> (that order). There is no stdio.h.
+- Printing: use print("fmt", ...), like printf. There is no printf or puts.
+- Program shape: void main(int argc, char *argv[]){ ...; exits(nil); }  -- end with
+  exits(nil), not return 0.
+- Compile then link on this machine (amd64): 6c file.c   then   6l -o file file.6
+  (6c compiles file.c to file.6; 6l links it). Then run: ./file
+
+When unsure about a command, its flags, or where something lives: run man NAME, or
+search with du -a /dir | grep, rather than guessing Linux syntax.
