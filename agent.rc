@@ -1,21 +1,30 @@
 #!/bin/rc
 # Minimal Plan 9 agent.
-# The model emits <cmd>COMMAND</cmd>; we run it, feed the output back, and loop
-# until it answers with no command. The transcript is mirrored back to the Mac
-# (/up) so Claude can watch what happened.
+# Protocol (tuned for small models): every model reply IS a shell command, which
+# we run and feed back -- UNLESS the reply starts with DONE, which ends the loop
+# with a final answer. The transcript is mirrored back to the Mac (/up).
 
 url=http://OLLAMA-HOST:11434/v1/chat/completions
-model=qwen2.5:3b
+model=gemma3:4b
 oifs=$ifs
 
 # ---- the task (edit this line; re-run with `r agent.rc`) ----
 task='List the files in /bin/games, then tell me how many there are.'
 
-sys='You are an agent on a Plan 9 computer. To run a shell command, reply with exactly <cmd>COMMAND</cmd> and nothing else. You will then be given the command output. When the task is finished, reply with a plain answer and no cmd tag.'
+sys='You are an agent on a Plan 9 (9front) computer using the rc shell. Reply with ONLY ONE rc shell command to run -- nothing else, no explanation, no markdown. This is rc, NOT bash: pipes work (a | b), but do NOT use bash features like <(...), <<<, or $(...) -- they error in rc. Example: to count files in a directory, reply exactly: ls /bin/games | wc -l. You will be shown the command output; if it shows an error, fix your command and try again. When you can answer the task from the output you have seen, reply with: DONE followed by your final answer.'
 
-fn send {	# upload a file body to the Mac so Claude can read it
+fn upload {	# send a file body to the Mac so Claude can read it
 	ifs=(); b=`{cat $1}; ifs=$oifs
 	hget -p $b http://10.0.2.2:8000/up >/dev/null
+}
+
+fn dbg {	# bundle the key artifacts and ship them to the Mac
+	{
+		echo '=== RAW RESPONSE ==='; cat /tmp/resp.json
+		echo; echo '=== EXTRACTED CONTENT ==='; cat /tmp/content
+		echo; echo '=== TRANSCRIPT ==='; cat /tmp/transcript
+	} >/tmp/dbg
+	upload /tmp/dbg
 }
 
 echo $task >/tmp/transcript
@@ -35,27 +44,27 @@ for(i in 1 2 3 4 5 6 7 8){
 	ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
 	hget -p $rq $url >/tmp/resp.json
 
-	# extract choices[0].message.content
-	sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/content
+	# extract choices[0].message.content, then unescape the JSON escapes we care about
+	sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
+	sed 's/\\u003c/</g; s/\\u003e/>/g; s/\\u0026/\&/g; s/\\"/"/g; s/\\t/ /g; s/\\n/ /g' /tmp/raw >/tmp/content
 
-	if(grep -s '<cmd>' /tmp/content){
-		sed 's/.*<cmd>//; s,</cmd>.*,,' /tmp/content >/tmp/cmd
-		echo; echo '### model runs:' `{cat /tmp/cmd}
-		ifs=(); c=`{cat /tmp/cmd}; ifs=$oifs
+	if(grep '^DONE' /tmp/content >/dev/null){
+		echo; echo '### AGENT FINAL ANSWER:'; sed 's/^DONE *//' /tmp/content; echo
+		dbg
+		exit 0
+	}
+	if not {
+		# the whole reply is the command
+		echo; echo '### model runs:' `{cat /tmp/content}
+		ifs=(); c=`{cat /tmp/content}; ifs=$oifs
 		@{ rc -c $c } >/tmp/out >[2=1]
 		echo '### output:'; cat /tmp/out
 		echo 'ASSISTANT:' >>/tmp/transcript
 		cat /tmp/content >>/tmp/transcript
-		echo >>/tmp/transcript
 		echo 'OUTPUT:' >>/tmp/transcript
 		cat /tmp/out >>/tmp/transcript
-	}
-	if not {
-		echo; echo '### AGENT FINAL ANSWER:'; cat /tmp/content; echo
-		send /tmp/transcript
-		exit 0
 	}
 }
 
 echo '(iteration limit hit)'
-send /tmp/transcript
+dbg
