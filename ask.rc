@@ -1,0 +1,15 @@
+#!/bin/rc
+# ask.rc -- one chat completion against the local Ollama box.
+# Prints the raw response AND ships it back to the Mac so Claude can read it.
+
+url=http://OLLAMA-HOST:11434/v1/chat/completions
+body='{"model":"qwen2.5:3b","messages":[{"role":"user","content":"reply with exactly: hello from plan 9"}],"stream":false}'
+
+hget -p $body $url >/tmp/resp.json
+cat /tmp/resp.json
+echo
+
+# send the response back to the Mac (whitespace may collapse; the JSON shape stays intact)
+resp=`{cat /tmp/resp.json}
+hget -p $"resp http://10.0.2.2:8000/up >/dev/null
+echo '--- uploaded to Mac ---'

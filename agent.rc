@@ -1,0 +1,61 @@
+#!/bin/rc
+# Minimal Plan 9 agent.
+# The model emits <cmd>COMMAND</cmd>; we run it, feed the output back, and loop
+# until it answers with no command. The transcript is mirrored back to the Mac
+# (/up) so Claude can watch what happened.
+
+url=http://OLLAMA-HOST:11434/v1/chat/completions
+model=qwen2.5:3b
+oifs=$ifs
+
+# ---- the task (edit this line; re-run with `r agent.rc`) ----
+task='List the files in /bin/games, then tell me how many there are.'
+
+sys='You are an agent on a Plan 9 computer. To run a shell command, reply with exactly <cmd>COMMAND</cmd> and nothing else. You will then be given the command output. When the task is finished, reply with a plain answer and no cmd tag.'
+
+fn send {	# upload a file body to the Mac so Claude can read it
+	ifs=(); b=`{cat $1}; ifs=$oifs
+	hget -p $b http://10.0.2.2:8000/up >/dev/null
+}
+
+echo $task >/tmp/transcript
+
+for(i in 1 2 3 4 5 6 7 8){
+	# build request body (escape transcript into a JSON string)
+	{
+		echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
+		echo -n $sys
+		echo -n '"},{"role":"user","content":"'
+		awk 'BEGIN{ORS=""}
+		     { gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," ")
+		       if(NR>1)printf "\\n"; printf "%s",$0 }' /tmp/transcript
+		echo -n '"}],"stream":false}'
+	} >/tmp/req.json
+
+	ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
+	hget -p $rq $url >/tmp/resp.json
+
+	# extract choices[0].message.content
+	sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/content
+
+	if(grep -s '<cmd>' /tmp/content){
+		sed 's/.*<cmd>//; s,</cmd>.*,,' /tmp/content >/tmp/cmd
+		echo; echo '### model runs:' `{cat /tmp/cmd}
+		ifs=(); c=`{cat /tmp/cmd}; ifs=$oifs
+		@{ rc -c $c } >/tmp/out >[2=1]
+		echo '### output:'; cat /tmp/out
+		echo 'ASSISTANT:' >>/tmp/transcript
+		cat /tmp/content >>/tmp/transcript
+		echo >>/tmp/transcript
+		echo 'OUTPUT:' >>/tmp/transcript
+		cat /tmp/out >>/tmp/transcript
+	}
+	if not {
+		echo; echo '### AGENT FINAL ANSWER:'; cat /tmp/content; echo
+		send /tmp/transcript
+		exit 0
+	}
+}
+
+echo '(iteration limit hit)'
+send /tmp/transcript
