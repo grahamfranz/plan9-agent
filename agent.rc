@@ -1,69 +1,108 @@
 #!/bin/rc
 # Minimal Plan 9 agent.
 # Protocol (tuned for small models): every model reply IS a shell command, which
-# we run and feed back -- UNLESS the reply starts with DONE, which ends the loop
-# with a final answer. The transcript is mirrored back to the Mac (/up).
+# we run and feed back as a real `user` turn -- UNLESS the reply starts with DONE,
+# which ends the loop with a final answer.
+#
+# The conversation is kept as a proper messages array (system/user/assistant/...),
+# not a single labeled blob -- otherwise small models imitate the role labels.
+# The transcript is mirrored back to the Mac (/up) so Claude can watch.
 
-url=http://OLLAMA-HOST:11434/v1/chat/completions
-model=gemma3:4b
+url=http://10.0.2.2:8000/claude
+model=claude-haiku-4-5-20251001
 oifs=$ifs
 
 # ---- the task (edit this line; re-run with `r agent.rc`) ----
-task='List the files in /bin/games, then tell me how many there are.'
+task='Run the program on this machine that prints a random Nietzsche quote (it may be named nietzsche, in /bin or /bin/games) and show me one quote. Then find the file its quotes come from and tell me how many quotes it contains.'
 
-sys='You are an agent on a Plan 9 (9front) computer using the rc shell. Reply with ONLY ONE rc shell command to run -- nothing else, no explanation, no markdown. This is rc, NOT bash: pipes work (a | b), but do NOT use bash features like <(...), <<<, or $(...) -- they error in rc. Example: to count files in a directory, reply exactly: ls /bin/games | wc -l. You will be shown the command output; if it shows an error, fix your command and try again. When you can answer the task from the output you have seen, reply with: DONE followed by your final answer.'
+sys='You are an agent on a Plan 9 (9front) computer using the rc shell (NOT bash/Linux).
 
-fn upload {	# send a file body to the Mac so Claude can read it
+Work ONE STEP AT A TIME. Reply with brief reasoning, then EXACTLY ONE command inside a code fence with no language tag, like:
+```
+ls /bin
+```
+Then STOP and wait. Do NOT issue multiple commands at once, and NEVER guess or narrate output you have not actually been shown.
+
+This is Plan 9, not Linux. Important differences:
+- Pipes (a | b), && and || work. Do NOT use <(...), <<<, or $(...).
+- There is NO head, tail, or find. For the first N lines use: sed 5q file. To search the file tree use: du -a /dir | grep name. To read a file use cat.
+- ls has no -a; use ls -l, or lc to list in columns.
+- Redirect stderr with >[2]file, not 2>file.
+- Run only text commands that print and exit. Do NOT start graphical or interactive programs.
+- If a program is an rc script, cat it to see how it works.
+
+When you can answer the task, reply with DONE followed by your final answer, with NO code fence.'
+
+fn esc {	# print file $1 as an escaped JSON string body (no surrounding quotes)
+	awk 'BEGIN{ORS=""}
+	     { gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," ")
+	       if(NR>1)printf "\\n"; printf "%s",$0 }' $1
+}
+
+fn addmsg {	# $1=role  $2=file -> append {"role":..,"content":..} to /tmp/messages
+	echo -n ',{"role":"'^$1^'","content":"' >>/tmp/messages
+	esc $2 >>/tmp/messages
+	echo -n '"}' >>/tmp/messages
+}
+
+fn upload {
 	ifs=(); b=`{cat $1}; ifs=$oifs
 	hget -p $b http://10.0.2.2:8000/up >/dev/null
 }
 
-fn dbg {	# bundle the key artifacts and ship them to the Mac
-	{
-		echo '=== RAW RESPONSE ==='; cat /tmp/resp.json
-		echo; echo '=== EXTRACTED CONTENT ==='; cat /tmp/content
-		echo; echo '=== TRANSCRIPT ==='; cat /tmp/transcript
-	} >/tmp/dbg
+fn dbg {
+	{	echo '=== RAW RESPONSE ==='; cat /tmp/resp.json
+		echo; echo '=== MESSAGES ==='; cat /tmp/messages } >/tmp/dbg
 	upload /tmp/dbg
 }
 
-echo $task >/tmp/transcript
+# seed the conversation with the task as the first user message
+echo $task >/tmp/task
+echo $sys >/tmp/sys
+{ echo -n '{"role":"user","content":"'; esc /tmp/task; echo -n '"}' } >/tmp/messages
 
-for(i in 1 2 3 4 5 6 7 8){
-	# build request body (escape transcript into a JSON string)
+for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
+	# build request: system message + the running messages array
 	{
 		echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
-		echo -n $sys
-		echo -n '"},{"role":"user","content":"'
-		awk 'BEGIN{ORS=""}
-		     { gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," ")
-		       if(NR>1)printf "\\n"; printf "%s",$0 }' /tmp/transcript
-		echo -n '"}],"stream":false}'
+		esc /tmp/sys
+		echo -n '"},'
+		cat /tmp/messages
+		echo -n '],"stream":false}'
 	} >/tmp/req.json
 
 	ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
 	hget -p $rq $url >/tmp/resp.json
 
-	# extract choices[0].message.content, then unescape the JSON escapes we care about
+	# extract content, unescape the JSON escapes we care about
 	sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
 	sed 's/\\u003c/</g; s/\\u003e/>/g; s/\\u0026/\&/g; s/\\"/"/g; s/\\t/ /g; s/\\n/ /g' /tmp/raw >/tmp/content
 
-	if(grep '^DONE' /tmp/content >/dev/null){
-		echo; echo '### AGENT FINAL ANSWER:'; sed 's/^DONE *//' /tmp/content; echo
-		dbg
-		exit 0
+	# decide: a fenced command, a DONE final answer, or (fallback) a bare command
+	if(grep '```' /tmp/content >/dev/null){
+		# pull out what's between the first pair of ``` and clean it up
+		awk -F '```' '{print $2}' /tmp/content >/tmp/cmd0
+		sed 's/^ *//; s/^sh //; s/^rc //; s/^bash //; s/`//g' /tmp/cmd0 >/tmp/cmd
 	}
 	if not {
-		# the whole reply is the command
-		echo; echo '### model runs:' `{cat /tmp/content}
-		ifs=(); c=`{cat /tmp/content}; ifs=$oifs
-		@{ rc -c $c } >/tmp/out >[2=1]
-		echo '### output:'; cat /tmp/out
-		echo 'ASSISTANT:' >>/tmp/transcript
-		cat /tmp/content >>/tmp/transcript
-		echo 'OUTPUT:' >>/tmp/transcript
-		cat /tmp/out >>/tmp/transcript
+		if(grep DONE /tmp/content >/dev/null){
+			echo; echo '### AGENT FINAL ANSWER:'; sed 's/.*DONE[: ]*//' /tmp/content; echo
+			dbg
+			exit 0
+		}
+		if not {
+			cp /tmp/content /tmp/cmd	# bare command (small-model style)
+		}
 	}
+
+	echo; echo '### model runs:' `{cat /tmp/cmd}
+	ifs=(); c=`{cat /tmp/cmd}; ifs=$oifs
+	@{ rc -c $c } >/tmp/out >[2=1]
+	echo '### output:'; cat /tmp/out
+	# record the turn as real roles
+	addmsg assistant /tmp/content
+	{ echo 'Command output:'; cat /tmp/out } >/tmp/usermsg
+	addmsg user /tmp/usermsg
 }
 
 echo '(iteration limit hit)'
