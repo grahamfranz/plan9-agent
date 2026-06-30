@@ -28,7 +28,7 @@ ls /bin
 
 Most commands should be text commands that print and exit. To run a GRAPHICAL or INTERACTIVE program (one that opens a window or waits for input), launch it in its own window: window PROG -- this opens a new rio window and returns immediately, so it will NOT hang the loop. Never run a graphical or interactive program directly without window, as that hangs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
 
-To FINISH: send a message with NO code fence that begins with DONE, followed by your final answer in plain prose (no code fences).
+To give your final answer, or to ask the user a question, reply with NO code fence. That message is shown to the user and ends your turn; the user can then reply with more.
 
 A reference for this system follows.'
 
@@ -76,6 +76,7 @@ hget http://10.0.2.2:8000/plan9.txt >/tmp/plan9
 { echo $sysbase; echo; cat /tmp/plan9 } >/tmp/sys
 
 echo 'plan9-agent ready. Type a task and press enter (quit to exit).'
+>/tmp/messages		# the conversation PERSISTS across prompts (so follow-ups have context)
 
 while(~ 1 1){
 	echo
@@ -85,54 +86,51 @@ while(~ 1 1){
 		echo bye.
 		exit 0
 	}
+	# ignore an empty line (read leaves just a newline = 1 byte)
+	if(test `{wc -c </tmp/task} -gt 1){
+		addmsg user /tmp/task		# append the new task; earlier turns stay for context
+		echo no >/tmp/done
 
-	# fresh conversation: the typed task as the first message (one per line)
-	{ echo -n '{"role":"user","content":"'; esc /tmp/task; echo -n '"}'; echo } >/tmp/messages
-	echo no >/tmp/done
+		for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
+			if(~ `{cat /tmp/done} no){
+				# trim history: keep the first message + the most recent ~12
+				awk '{l[NR]=$0} END{n=12; print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
 
-	for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
-		if(~ `{cat /tmp/done} no){
-			# trim history to the task (line 1) + the most recent $keep messages
-			awk '{l[NR]=$0} END{n=12; print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
+				# build request: system message + the (comma-joined) trimmed history
+				{
+					echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
+					esc /tmp/sys
+					echo -n '"},'
+					awk 'NR>1{printf ","} {printf "%s",$0}' /tmp/hist
+					echo -n '],"stream":false}'
+				} >/tmp/req.json
 
-			# build request: system message + the (comma-joined) trimmed history
-			{
-				echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
-				esc /tmp/sys
-				echo -n '"},'
-				awk 'NR>1{printf ","} {printf "%s",$0}' /tmp/hist
-				echo -n '],"stream":false}'
-			} >/tmp/req.json
+				ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
+				hget -p $rq $url >/tmp/resp.json
 
-			ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
-			hget -p $rq $url >/tmp/resp.json
+				sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
+				awk '{ gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
+				       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n"); print }' /tmp/raw >/tmp/content
 
-			sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
-			awk '{ gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
-			       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n"); print }' /tmp/raw >/tmp/content
-
-			# if a command fence is present, run it (ignore premature DONE);
-			# only a fence-free reply may finish via DONE.
-			if(grep '```' /tmp/content >/dev/null){
-				awk '/^```/{n++; next} n==1{print}' /tmp/content >/tmp/cmd
-				runcmd
-			}
-			if not {
-				if(grep DONE /tmp/content >/dev/null){
-					echo; echo '### answer:'; sed 's/.*DONE[: ]*//' /tmp/content; echo
+				if(grep '```' /tmp/content >/dev/null){
+					# the model issued a command: run it (ignore any premature DONE)
+					awk '/^```/{n++; next} n==1{print}' /tmp/content >/tmp/cmd
+					runcmd
+				}
+				if not {
+					# NO command -- the model is talking to you (answer or question).
+					# Show it, keep it in history, and hand control back to the prompt.
+					echo; echo '### agent:'; sed 's/^DONE[ :]*//' /tmp/content; echo
+					addmsg assistant /tmp/content
 					echo yes >/tmp/done
 					dbg
 				}
-				if not {
-					cp /tmp/content /tmp/cmd	# bare command (small-model style)
-					runcmd
-				}
 			}
 		}
-	}
 
-	if(~ `{cat /tmp/done} no){
-		echo '(hit the step limit without finishing)'
-		dbg
+		if(~ `{cat /tmp/done} no){
+			echo '(hit the step limit -- type more to continue, or a new task)'
+			dbg
+		}
 	}
 }
