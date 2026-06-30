@@ -109,8 +109,10 @@ while(~ 1 1){
 				hget -p $rq $url >/tmp/resp.json
 
 				sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
-				awk '{ gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
-				       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n"); print }' /tmp/raw >/tmp/content
+				awk '{ gsub(/\\\\/,"\001")	# protect escaped backslashes first
+				       gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
+				       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n")
+				       gsub(/\001/,"\\"); print }' /tmp/raw >/tmp/content	# restore as single backslashes
 
 				if(grep '```' /tmp/content >/dev/null){
 					# the model issued a command: run it (ignore any premature DONE)
