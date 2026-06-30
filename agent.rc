@@ -34,7 +34,8 @@ A reference for this system follows.'
 
 fn esc {	# print file $1 as an escaped JSON string body (no surrounding quotes)
 	awk 'BEGIN{ORS=""}
-	     { gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," ")
+	     { gsub(/\t/," "); gsub(/[^ -~]/,"")	# tabs->space, then drop control/binary bytes (keeps JSON valid)
+	       gsub(/\\/,"\\\\"); gsub(/"/,"\\\"")
 	       if(NR>1)printf "\\n"; printf "%s",$0 }' $1
 }
 
