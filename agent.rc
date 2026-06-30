@@ -2,15 +2,16 @@
 # plan9-agent -- a tiny interactive coding agent for Plan 9 / 9front.
 #
 # Type a task at the prompt. The model issues ONE rc command at a time inside a
-# code fence; we run it and feed the real output back, until it answers with a
-# DONE message. Then it prompts you again. Type quit (or exit) to leave.
+# code fence; we run it (under a timeout) and feed the real output back, until it
+# answers with a DONE message. Then it prompts you again. Type quit to exit.
 #
-# It talks to an OpenAI-style chat endpoint (here a Mac-side proxy to Claude).
+# Talks to an OpenAI-style chat endpoint (here a Mac-side proxy to Claude).
 # The Plan 9 reference is loaded from plan9.txt. Trails mirror to the Mac (/up).
 
 url=http://10.0.2.2:8000/claude
 model=claude-haiku-4-5-20251001
 oifs=$ifs
+keep=12		# how many recent messages to send (plus the task) -- bounds request size
 
 sysbase='You are an agent on a Plan 9 (9front) computer using the rc shell.
 
@@ -37,10 +38,8 @@ fn esc {	# print file $1 as an escaped JSON string body (no surrounding quotes)
 	       if(NR>1)printf "\\n"; printf "%s",$0 }' $1
 }
 
-fn addmsg {	# $1=role  $2=file -> append {"role":..,"content":..} to /tmp/messages
-	echo -n ',{"role":"'^$1^'","content":"' >>/tmp/messages
-	esc $2 >>/tmp/messages
-	echo -n '"}' >>/tmp/messages
+fn addmsg {	# $1=role  $2=file -> append one {"role":..,"content":..} LINE to /tmp/messages
+	{ echo -n '{"role":"'^$1^'","content":"'; esc $2; echo -n '"}'; echo } >>/tmp/messages
 }
 
 fn upload {
@@ -54,17 +53,21 @@ fn dbg {
 	upload /tmp/dbg
 }
 
-fn runcmd {	# run /tmp/cmd, but never let a command hang the loop (kill after a timeout)
+fn runcmd {	# run /tmp/cmd under a 15s timeout; feed back at most 40 lines of output
 	echo; echo '### runs:'; cat /tmp/cmd; echo
 	rc /tmp/cmd >/tmp/out >[2=1] &
 	p=$apid
 	{ sleep 15; echo kill >/proc/$p/note } >[2]/dev/null &
 	w=$apid
 	wait $p
-	echo kill >/proc/$w/note >[2]/dev/null	# stop the watchdog if cmd finished first
+	echo kill >/proc/$w/note >[2]/dev/null		# stop the watchdog if cmd finished first
 	echo '### output:'; cat /tmp/out
+	sed 40q /tmp/out >/tmp/outcap			# cap what the model sees, so it cannot bloat the request
+	if(test `{wc -l </tmp/out} -gt 40){
+		echo '...[output truncated to 40 lines; use grep or sed Nq to narrow it]' >>/tmp/outcap
+	}
 	addmsg assistant /tmp/content
-	{ echo 'Command output:'; cat /tmp/out } >/tmp/usermsg
+	{ echo 'Command output:'; cat /tmp/outcap } >/tmp/usermsg
 	addmsg user /tmp/usermsg
 }
 
@@ -83,18 +86,21 @@ while(~ 1 1){
 		exit 0
 	}
 
-	# fresh conversation seeded with the typed task
-	{ echo -n '{"role":"user","content":"'; esc /tmp/task; echo -n '"}' } >/tmp/messages
+	# fresh conversation: the typed task as the first message (one per line)
+	{ echo -n '{"role":"user","content":"'; esc /tmp/task; echo -n '"}'; echo } >/tmp/messages
 	echo no >/tmp/done
 
 	for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
 		if(~ `{cat /tmp/done} no){
-			# build request: system message + the running messages array
+			# trim history to the task (line 1) + the most recent $keep messages
+			awk -v n=$keep '{l[NR]=$0} END{print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
+
+			# build request: system message + the (comma-joined) trimmed history
 			{
 				echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
 				esc /tmp/sys
 				echo -n '"},'
-				cat /tmp/messages
+				awk 'NR>1{printf ","} {printf "%s",$0}' /tmp/hist
 				echo -n '],"stream":false}'
 			} >/tmp/req.json
 

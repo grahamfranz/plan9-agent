@@ -7,27 +7,30 @@ Shell is rc, not bash:
 - No bash process substitution <(...), and no <<< here-strings.
 - Conditionals: if(test -f x){ ... }; if not { ... }.  Loops: for(i in a b c){ ... }.
 
-Commands that DIFFER from Linux:
-- No head or tail. First N lines: sed Nq file  (e.g. sed 10q file). To see a whole file: cat file.
-- No find. Search the file tree with: du -a /dir | grep name   (or the walk command).
-- ls flags are -lmnpqrst (NO -a). Use lc for a columnar listing.
-- cat grep wc sort uniq sed awk echo cp mv rm mkdir chmod all exist and work normally.
-- grep -c counts matching lines; grep -n shows line numbers.
-- file NAME reports a file's type.
+COMMON COMMANDS -- prefer these over reading a whole man page:
+- cat FILE            print a file (cat A B concatenates). To READ a file, use cat.
+- sed 10q FILE        first 10 lines.  sed -n '5,9p' FILE  lines 5-9.  sed 's/a/b/g' FILE  substitute.
+- grep PAT FILE       -i ignore case, -v invert, -n line numbers, -c count matches, -l names only.
+- wc FILE             lines words bytes.  wc -l  just lines.
+- sort  /  sort -n (numeric)  /  sort -r (reverse).   uniq  /  uniq -c (count duplicates).
+- ls -l (long listing)   lc (columnar).   du -a DIR (size of every file under DIR; pipe to grep to search).
+- echo TEXT;  date;  cal;  sleep N;  seq A B (print numbers A..B);  test -f FILE / -d DIR.
+- ps (processes);  who (who is logged in).
+- cat /dev/user (your name);  cat /dev/sysname (hostname);  cat /dev/time (seconds since epoch);
+  cat /dev/cputype (cpu architecture).
+- mkdir, cp, mv, rm, chmod +x FILE  all work as expected.
 
-Filesystem:
-- Programs: /bin and /bin/games.  Data/libraries: /lib.  Config: /lib/ndb, etc.
-- THE ENTIRE OS SOURCE is under /sys/src. Command sources live there, e.g.
-  /sys/src/cmd and /sys/src/games. To rebuild a program: cd to its source dir and run mk.
-- Manuals: man NAME (e.g. man ls). Plan 9 man pages are short and authoritative.
+NO head, tail, find, od, or ls -a. Use sed Nq for the first N lines, and du -a DIR | grep NAME to search.
 
 Writing and compiling C (it differs from Linux C):
 - Headers: #include <u.h> then #include <libc.h> (that order). There is no stdio.h.
 - Printing: use print("fmt", ...), like printf. There is no printf or puts.
-- Program shape: void main(int argc, char *argv[]){ ...; exits(nil); }  -- end with
-  exits(nil), not return 0.
-- Compile then link on this machine (amd64): 6c file.c   then   6l -o file file.6
-  (6c compiles file.c to file.6; 6l links it). Then run: ./file
+- Program shape: void main(int argc, char *argv[]){ ...; exits(nil); }  -- end with exits(nil).
+- Compile then link (amd64): 6c file.c   then   6l -o file file.6.  Note 6c writes file.6 to the
+  CURRENT directory unless you give -o, so compile with: 6c -o /tmp/file.6 /tmp/file.c
+- Run: ./file  or the full path.
 
-When unsure about a command, its flags, or where something lives: run man NAME, or
-search with du -a /dir | grep, rather than guessing Linux syntax.
+Filesystem: programs in /bin and /bin/games; data in /lib; the whole OS source in /sys/src.
+
+When these are not enough, run man NAME (or man N NAME) for the full manual -- but a man page is long,
+so read it only when you actually need a detail the notes above do not cover.
