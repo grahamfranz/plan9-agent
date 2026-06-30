@@ -93,7 +93,7 @@ while(~ 1 1){
 	for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
 		if(~ `{cat /tmp/done} no){
 			# trim history to the task (line 1) + the most recent $keep messages
-			awk -v n=$keep '{l[NR]=$0} END{print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
+			awk '{l[NR]=$0} END{n=12; print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
 
 			# build request: system message + the (comma-joined) trimmed history
 			{
