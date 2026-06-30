@@ -12,6 +12,7 @@ url=http://10.0.2.2:8000/claude
 model=claude-haiku-4-5-20251001
 oifs=$ifs
 keep=12		# how many recent messages to send (plus the task) -- bounds request size
+hidefile=/tmp/agent.hide	# file listing dirs to mask (one path/line); re-read each command, editable live from any window
 
 sysbase='You are an agent on a Plan 9 (9front) computer using the rc shell.
 
@@ -29,6 +30,8 @@ ls /bin
 Most commands should be text commands that print and exit. To run a GRAPHICAL or INTERACTIVE program (one that opens a window or waits for input), launch it in its own window: window PROG -- this opens a new rio window and returns immediately, so it will NOT hang the loop. Never run a graphical or interactive program directly without window, as that hangs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
 
 To give your final answer, or to ask the user a question, reply with NO code fence. That message is shown to the user and ends your turn; the user can then reply with more.
+
+You run in a restricted per-command namespace: your working directory is /tmp -- create and compile files there. Your home directory is hidden and appears empty. Each command runs in a fresh namespace, so changing where you are does not persist between commands.
 
 A reference for this system follows.'
 
@@ -54,9 +57,19 @@ fn dbg {
 	upload /tmp/dbg
 }
 
-fn runcmd {	# run /tmp/cmd under a 15s timeout; feed back at most 40 lines of output
-	echo; echo '### runs:'; cat /tmp/cmd; echo
-	rc /tmp/cmd >/tmp/out >[2=1] &
+fn runcmd {	# run /tmp/cmd in a private namespace, under a 15s timeout; feed back <=40 lines
+	echo; echo '### runs (sandboxed):'; cat /tmp/cmd; echo
+	hide=`{cat $hidefile}		# re-read the policy each turn, so live edits to $hidefile take effect
+	# @{} forks the namespace, so the binds below are LOCAL to this command and
+	# vanish when it exits -- a fresh sandbox every turn, enforced by the kernel.
+	# We mask each dir in $hide (your home) behind an empty dir and pin the cwd to
+	# the /tmp scratch area. exec makes the command BE this process, so the
+	# timeout's kill-note lands on it directly.
+	@{
+		for(d in $hide){ bind /tmp/.empty $d >[2]/dev/null }
+		cd /tmp
+		exec rc /tmp/cmd
+	} >/tmp/out >[2=1] &
 	p=$apid
 	{ sleep 15; echo kill >/proc/$p/note } >[2]/dev/null &
 	w=$apid
@@ -76,7 +89,13 @@ fn runcmd {	# run /tmp/cmd under a 15s timeout; feed back at most 40 lines of ou
 hget http://10.0.2.2:8000/plan9.txt >/tmp/plan9
 { echo $sysbase; echo; cat /tmp/plan9 } >/tmp/sys
 
+mkdir -p /tmp/.empty	# the empty dir we bind over hidden paths in each command's sandbox
+if(! test -f $hidefile){
+	echo $home >$hidefile	# seed the default sandbox policy on first run (your edits then persist)
+}
+
 echo 'plan9-agent ready. Type a task and press enter (quit to exit).'
+echo -n 'sandbox masks (edit '^$hidefile^' live to change): '; cat $hidefile
 >/tmp/messages		# the conversation PERSISTS across prompts (so follow-ups have context)
 
 while(~ 1 1){
