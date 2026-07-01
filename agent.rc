@@ -14,6 +14,8 @@ oifs=$ifs
 keep=12		# how many recent messages to send (plus the task) -- bounds request size
 hidefile=/tmp/agent.hide	# file listing dirs to mask (one path/line); re-read each command, editable live from any window
 ctxdir=/tmp/agent/context	# system prompt is composed from every file in here (name order); edit/add files to change it
+histfile=/tmp/agent/history	# append-only, timestamped record of every message (NOT trimmed, NOT sent); grep to recall
+indir=/tmp/agent/in		# drop a file here from any window and it becomes the next task (a filesystem inbox)
 
 sysbase='You are an agent on a Plan 9 (9front) computer using the rc shell.
 
@@ -34,6 +36,8 @@ To give your final answer, or to ask the user a question, reply with NO code fen
 
 You run in a restricted per-command namespace: your working directory is /tmp -- create and compile files there. Your home directory is hidden and appears empty. Each command runs in a fresh namespace, so changing where you are does not persist between commands.
 
+A full record of this conversation is kept at /tmp/agent/history. If you need something from earlier that is no longer in view, grep that file, e.g. grep PATTERN /tmp/agent/history.
+
 A reference for this system follows.'
 
 fn esc {	# print file $1 as an escaped JSON string body (no surrounding quotes)
@@ -43,8 +47,9 @@ fn esc {	# print file $1 as an escaped JSON string body (no surrounding quotes)
 	       if(NR>1)printf "\\n"; printf "%s",$0 }' $1
 }
 
-fn addmsg {	# $1=role  $2=file -> append one {"role":..,"content":..} LINE to /tmp/messages
+fn addmsg {	# $1=role  $2=file -> append to the sent messages AND the timestamped history record
 	{ echo -n '{"role":"'^$1^'","content":"'; esc $2; echo -n '"}'; echo } >>/tmp/messages
+	{ echo '===' $1 '@' `{date} '==='; cat $2; echo } >>$histfile	# append-only, greppable, never trimmed
 }
 
 fn upload {
@@ -102,7 +107,8 @@ if(! test -d $ctxdir){
 }
 buildsys
 
-mkdir -p /tmp/.empty	# the empty dir we bind over hidden paths in each command's sandbox
+mkdir -p /tmp/.empty $indir	# the sandbox empty-dir, and the filesystem-inbox directory
+echo '===== session started @ '`{date}' =====' >>$histfile	# open a new block in the append-only record
 if(! test -f $hidefile){
 	echo $home >$hidefile	# seed the default sandbox policy on first run (your edits then persist)
 }
@@ -114,8 +120,15 @@ echo 'context (edit/add files in '^$ctxdir^' to shape the prompt):'; ls $ctxdir
 
 while(~ 1 1){
 	echo
-	echo -n 'agent> '
-	read >/tmp/task
+	inq=`{ls $indir >[2]/dev/null}
+	if(! ~ $#inq 0){			# a file was dropped in the inbox: consume the oldest-named one as the task
+		cp $inq(1) /tmp/task; rm $inq(1)
+		echo 'agent> (from inbox '^$inq(1)^')'; cat /tmp/task
+	}
+	if not {
+		echo -n 'agent> '
+		read >/tmp/task
+	}
 	if(~ `{cat /tmp/task} quit exit){
 		echo bye.
 		exit 0
