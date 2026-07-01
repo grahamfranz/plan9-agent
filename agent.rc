@@ -13,6 +13,7 @@ model=claude-haiku-4-5-20251001
 oifs=$ifs
 keep=12		# how many recent messages to send (plus the task) -- bounds request size
 hidefile=/tmp/agent.hide	# file listing dirs to mask (one path/line); re-read each command, editable live from any window
+ctxdir=/tmp/agent/context	# system prompt is composed from every file in here (name order); edit/add files to change it
 
 sysbase='You are an agent on a Plan 9 (9front) computer using the rc shell.
 
@@ -85,9 +86,21 @@ fn runcmd {	# run /tmp/cmd in a private namespace, under a 15s timeout; feed bac
 	addmsg user /tmp/usermsg
 }
 
-# load the Plan 9 reference and build the full system prompt once
+fn buildsys {	# compose /tmp/sys (the system prompt) from every file in $ctxdir, in name order
+	>/tmp/sys
+	for(f in `{ls $ctxdir}){ cat $f >>/tmp/sys; echo >>/tmp/sys }
+}
+
+# seed the context dir once, from the built-in prompt + the fetched reference. after that the
+# files in $ctxdir are the source of truth: edit them (or have a model write them) to change the
+# agent's context. rm -r $ctxdir to reseed from the defaults below.
 hget http://10.0.2.2:8000/plan9.txt >/tmp/plan9
-{ echo $sysbase; echo; cat /tmp/plan9 } >/tmp/sys
+if(! test -d $ctxdir){
+	mkdir -p $ctxdir
+	echo $sysbase >$ctxdir/00-system
+	cp /tmp/plan9 $ctxdir/10-plan9
+}
+buildsys
 
 mkdir -p /tmp/.empty	# the empty dir we bind over hidden paths in each command's sandbox
 if(! test -f $hidefile){
@@ -96,6 +109,7 @@ if(! test -f $hidefile){
 
 echo 'plan9-agent ready. Type a task and press enter (quit to exit).'
 echo -n 'sandbox masks (edit '^$hidefile^' live to change): '; cat $hidefile
+echo 'context (edit/add files in '^$ctxdir^' to shape the prompt):'; ls $ctxdir
 >/tmp/messages		# the conversation PERSISTS across prompts (so follow-ups have context)
 
 while(~ 1 1){
@@ -109,6 +123,7 @@ while(~ 1 1){
 	# ignore an empty line (read leaves just a newline = 1 byte)
 	if(test `{wc -c </tmp/task} -gt 1){
 		addmsg user /tmp/task		# append the new task; earlier turns stay for context
+		buildsys		# recompose the prompt from $ctxdir each turn, so live edits to context apply
 		echo no >/tmp/done
 
 		for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
