@@ -11,6 +11,8 @@ COMMON COMMANDS -- prefer these over reading a whole man page:
 - cat FILE            print a file (cat A B concatenates). To READ a file, use cat.
 - sed 10q FILE        first 10 lines.  sed -n '5,9p' FILE  lines 5-9.  sed 's/a/b/g' FILE  substitute.
 - grep PAT FILE       -i ignore case, -v invert, -n line numbers, -c count matches, -l names only.
+                      grep already uses egrep-style regex -- there is NO -E; write alternation
+                      directly: grep 'web|http|ftp'. (-E gives a usage error.)
 - wc FILE             lines words bytes.  wc -l  just lines.
 - sort  /  sort -n (numeric)  /  sort -r (reverse).   uniq  /  uniq -c (count duplicates).
 - ls -l (long listing)   lc (columnar).   du -a DIR (size of every file under DIR; pipe to grep to search).
@@ -35,6 +37,10 @@ Writing and compiling C (it differs from Linux C):
 - Run a text program: /tmp/prog (full path). Run a GRAPHICAL one in its own window: window /tmp/prog.
 
 Filesystem: programs in /bin and /bin/games; data in /lib; the whole OS source in /sys/src.
+
+No package manager (no apt/pkg/brew). Software is already in /bin, or built from source under
+/sys/src with mk, or fetched with hget URL (or git/clone). There is no "download and install an app"
+step like on Linux -- do not go looking for one; check /bin first, then /sys/src.
 
 When these are not enough, run man NAME (or man N NAME) for the full manual -- but a man page is long,
 so read it only when you actually need a detail the notes above do not cover.
