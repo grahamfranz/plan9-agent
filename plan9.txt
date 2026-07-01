@@ -26,9 +26,13 @@ Writing and compiling C (it differs from Linux C):
 - Headers: #include <u.h> then #include <libc.h> (that order). There is no stdio.h.
 - Printing: use print("fmt", ...), like printf. There is no printf or puts.
 - Program shape: void main(int argc, char *argv[]){ ...; exits(nil); }  -- end with exits(nil).
-- Compile then link (amd64): 6c file.c   then   6l -o file file.6.  Note 6c writes file.6 to the
-  CURRENT directory unless you give -o, so compile with: 6c -o /tmp/file.6 /tmp/file.c
-- Run: ./file  or the full path.
+- Compile then link (amd64), two steps. IMPORTANT: 6c does NOT take -o -- it always writes stem.6
+  (the source name with a .6 suffix) into the CURRENT directory. Your current directory is /tmp, so:
+      6c prog.c            # compiles /tmp/prog.c -> writes /tmp/prog.6 (never pass -o to 6c)
+      6l -o /tmp/prog /tmp/prog.6   # only 6l takes -o; this makes the runnable /tmp/prog
+  If a link fails with "cannot open file: ...6", the object landed in the current dir under its
+  own stem name -- do ls *.6 to find it, do not add -o to 6c.
+- Run a text program: /tmp/prog (full path). Run a GRAPHICAL one in its own window: window /tmp/prog.
 
 Filesystem: programs in /bin and /bin/games; data in /lib; the whole OS source in /sys/src.
 
