@@ -12,14 +12,17 @@ exists to demonstrate one idea:
 
 The whole agent is the loop in [`agent.rc`](agent.rc):
 
-1. Send the task + a short system prompt to a chat-completions API (any
-   OpenAI-compatible endpoint; developed against a local
-   [Ollama](https://ollama.com) box running `qwen2.5:3b`).
-2. The model replies. To run a command it emits `<cmd>COMMAND</cmd>` and nothing
-   else — a plain text convention, no JSON tool-use needed.
+1. You type a task at the `agent>` prompt. The task plus a short system prompt
+   and a Plan 9 cheat-sheet go to a chat-completions API (any OpenAI-compatible
+   endpoint; developed against a local [Ollama](https://ollama.com) box, then
+   Claude Haiku through a dev proxy).
+2. The model replies with brief reasoning and **one** command inside a markdown
+   code fence — a plain-text convention, no JSON tool-use needed.
 3. The harness runs that command inside `@{ ... }` (an rc block with its **own
-   copy of the namespace**), captures the output, and feeds it back.
-4. Loop until the model answers with no `<cmd>` tag.
+   copy of the namespace**) under a timeout, captures the output, and feeds the
+   real result back.
+4. Loop until the model replies with **no** code fence — that message is its
+   answer (or a question) to you, and the `agent>` prompt returns.
 
 The model only *decides*; the harness *acts* — by `fork`/`exec`, the same way a
 shell has run programs since 1979. The only place JSON shows up is at the API
@@ -30,24 +33,51 @@ library.
 
 - **Everything is a file**, so the agent reaches the whole machine with one
   interface (`read`/`write`) — no per-capability API.
-- **Namespaces are per-process and native.** `@{ ... }` gives a command a private
-  view of the filesystem. Want the agent off the network? Don't bind `/net` into
-  its namespace and it *cannot* reach it — enforced by the kernel, not by a
-  permission prompt. (The sandboxing in this v1 is structural scaffolding;
-  tightening the namespace is the next step.)
+- **Namespaces are per-process and native.** Every command runs in its own
+  forked namespace (`@{ ... }`), so the sandbox is real, not scaffolding: the
+  paths in the policy file are bound to an empty dir (your home, by default), the
+  working dir is pinned to `/tmp`, and the whole thing resets every command —
+  enforced by the kernel, not by a permission prompt or by us inspecting the
+  command string. Add `/net` to the policy and the agent literally *cannot* open
+  a network connection, because on Plan 9 the network **is** `/net`.
+
+## The sandbox
+
+The policy is a plain file (`/tmp/agent.hide` by default), re-read before every
+command, so you can edit it **live** from any window — no restart:
+
+```
+cat /tmp/agent.hide              # what's masked right now
+echo /net >>/tmp/agent.hide      # take the agent offline on its next command
+echo /sys/src >>/tmp/agent.hide  # ...and hide the OS source too
+>/tmp/agent.hide                 # clear it: full access
+```
+
+Because the namespace is forked per command, the change lands on the very next
+command, and a command can never corrupt the harness's own view. The policy path
+is a single variable (`hidefile`) — point it at `/mnt/agent/hide` later and
+nothing else changes.
 
 ## Files
 
 - `agent.rc` — the agent loop.
 - `ask.rc` — a one-shot probe: send one prompt, print the raw response.
 - `devserver.py` — a tiny Mac-side bridge used during development: serves scripts
-  to the VM over HTTP and catches output the VM sends back (handy when your dev
-  machine and your Plan 9 box are different computers).
+  to the VM, proxies its API calls (adding TLS + auth), and catches output the VM
+  sends back. Throwaway — a real install skips it.
 
 ## Status
 
-Early. It runs commands and loops. Robust JSON handling, real namespace
-restriction, and multi-tool support are all TODO.
+Working. It's an interactive REPL that runs each command in a per-command
+namespace sandbox with a live-editable policy, keeps conversation context across
+prompts, times out hung commands, and launches graphical programs in their own
+window. It has written, compiled, debugged, and run C programs from vague prompts.
+
+Rough edges / next: the dev proxy (`devserver.py`) is throwaway — a real install
+talks to a model directly (9front has TLS); large conversations still strain the
+request path; and exposing the agent's whole control surface as a mounted file
+tree (`/mnt/agent/…` via `ramfs` + `/srv`) is the natural follow-on to the
+policy file.
 
 ## License
 
