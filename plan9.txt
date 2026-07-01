@@ -1,54 +1,43 @@
-PLAN 9 / 9front QUICK REFERENCE (the machine you are on; it is NOT Linux).
+PLAN 9 / 9front QUICK REFERENCE (this machine; NOT Linux). All items below verified by running.
 
 Shell is rc, not bash:
-- Pipes work: a | b.  Logical: cmd && cmd, cmd || cmd.
-- No $(...). Command substitution is `{cmd}. Variables are lists: x=(a b); $x.
+- Pipes: a | b.  Logical: cmd && cmd, cmd || cmd.
+- Command substitution is `{cmd} (NOT $(...)). Verified: `{echo hi | wc -c} -> 3.
+- Variables are lists: x=(a b); $x.  Assign: x=val.
 - Redirect: >file  >>file  <file.  Stderr: >[2]file.  Merge stderr into stdout: >[2=1].
-- No bash process substitution <(...), and no <<< here-strings.
-- Conditionals: if(test -f x){ ... }; if not { ... }.  Loops: for(i in a b c){ ... }.
+- No <(...) process substitution, no <<< here-strings. rc DOES have here-docs (see below).
+- Conditionals: if(test -f x){...}; if not {...}.  Loops: for(i in a b c){...}.
 
-COMMON COMMANDS -- prefer these over reading a whole man page:
-- cat FILE            print a file (cat A B concatenates). To READ a file, use cat.
-- sed 10q FILE        first 10 lines.  sed -n '5,9p' FILE  lines 5-9.  sed 's/a/b/g' FILE  substitute.
-- grep PAT FILE       -i ignore case, -v invert, -n line numbers, -c count matches, -l names only.
-                      grep already uses egrep-style regex -- there is NO -E; write alternation
-                      directly: grep 'web|http|ftp'. (-E gives a usage error.)
-- wc FILE             lines words bytes.  wc -l  just lines.
-- sort  /  sort -n (numeric)  /  sort -r (reverse).   uniq  /  uniq -c (count duplicates).
-- ls -l (long listing)   lc (columnar).   du -a DIR (size of every file under DIR; pipe to grep to search).
-- echo TEXT;  date;  cal;  sleep N;  seq A B (print numbers A..B);  test -f FILE / -d DIR.
-- ps (processes);  who (who is logged in).
-- cat /dev/user (your name);  cat /dev/sysname (hostname);  cat /dev/time (seconds since epoch);
-  cat /dev/cputype (cpu architecture).
-- mkdir, cp, mv, rm, chmod +x FILE  all work as expected.
+C toolchain (amd64) -- VERIFIED:
+- Headers: #include <u.h> then #include <libc.h> (that order). No stdio.h.
+- Print with print("fmt",...); no printf/puts.  Program ends with exits(nil).
+  void main(int argc, char *argv[]){ ...; exits(nil); }
+- 6c does NOT take -o. It writes stem.6 into the CURRENT directory:
+      6c prog.c            # -> prog.6 in cwd (verified: hello.c -> hello.6 in /tmp)
+      6l -o /tmp/prog /tmp/prog.6   # only 6l takes -o; makes the runnable
+  Run: /tmp/prog (verified prints correctly). GRAPHICAL: window /tmp/prog.
+  If link says "cannot open file: ...6", find the object: ls *.6 (do NOT add -o to 6c).
 
-NO head, tail, find, od, or ls -a. Use sed Nq for the first N lines, and du -a DIR | grep NAME to search.
+Command differences an agent gets wrong (VERIFIED):
+- grep uses egrep regex but has NO -E flag: -E gives a usage error.
+  Write alternation directly: grep 'web|xyz'  (verified: matches "web http ftp").
+- ls has NO -a flag (usage error). Flags it accepts: -dlmnpqrstuFQT.  lc = columnar.
+- NO head/tail/find/od. Use: sed Nq FILE (first N lines, verified), sed -n 'A,Bp' FILE,
+  du -a DIR | grep NAME (to search files).
+- sed s/a/b/g substitutes; sort / sort -n / sort -r; uniq / uniq -c; wc / wc -l.
 
-Writing a multi-line file: use an rc here-document (rc DOES have them):
-    cat > /tmp/prog.c << 'EOF'
-    ...your lines here...
+Useful files/commands:
+- cat /dev/user, /dev/sysname, /dev/time, /dev/cputype.  date; cal; seq A B; ps; who.
+- test -f FILE / -d DIR.  mkdir cp mv rm; chmod +x FILE.
+
+Networking / software:
+- hget URL  fetches over http (verified /bin/hget exists).
+- No package manager (no apt/pkg/brew). Software is in /bin, or built from /sys/src with mk.
+  Do not look for an install step; check /bin first, then /sys/src.
+
+Writing multi-line files: use an rc here-doc with quoted 'EOF' to keep body literal:
+    cat > /tmp/f << 'EOF'
+    ...literal lines...
     EOF
-The quoted 'EOF' keeps the body literal (no $ or backtick expansion). Do NOT write "cat > file" followed
-by the content on later lines: your command is run as a script, so those lines execute as COMMANDS, not
-input. The here-document is the reliable way to create a file.
 
-Writing and compiling C (it differs from Linux C):
-- Headers: #include <u.h> then #include <libc.h> (that order). There is no stdio.h.
-- Printing: use print("fmt", ...), like printf. There is no printf or puts.
-- Program shape: void main(int argc, char *argv[]){ ...; exits(nil); }  -- end with exits(nil).
-- Compile then link (amd64), two steps. IMPORTANT: 6c does NOT take -o -- it always writes stem.6
-  (the source name with a .6 suffix) into the CURRENT directory. Your current directory is /tmp, so:
-      6c prog.c            # compiles /tmp/prog.c -> writes /tmp/prog.6 (never pass -o to 6c)
-      6l -o /tmp/prog /tmp/prog.6   # only 6l takes -o; this makes the runnable /tmp/prog
-  If a link fails with "cannot open file: ...6", the object landed in the current dir under its
-  own stem name -- do ls *.6 to find it, do not add -o to 6c.
-- Run a text program: /tmp/prog (full path). Run a GRAPHICAL one in its own window: window /tmp/prog.
-
-Filesystem: programs in /bin and /bin/games; data in /lib; the whole OS source in /sys/src.
-
-No package manager (no apt/pkg/brew). Software is already in /bin, or built from source under
-/sys/src with mk, or fetched with hget URL (or git/clone). There is no "download and install an app"
-step like on Linux -- do not go looking for one; check /bin first, then /sys/src.
-
-When these are not enough, run man NAME (or man N NAME) for the full manual -- but a man page is long,
-so read it only when you actually need a detail the notes above do not cover.
+man NAME (or man N NAME) for details -- sample with sed Nq; never read a whole page.
