@@ -24,6 +24,14 @@ COMMON COMMANDS -- prefer these over reading a whole man page:
 
 NO head, tail, find, od, or ls -a. Use sed Nq for the first N lines, and du -a DIR | grep NAME to search.
 
+Writing a multi-line file: use an rc here-document (rc DOES have them):
+    cat > /tmp/prog.c << 'EOF'
+    ...your lines here...
+    EOF
+The quoted 'EOF' keeps the body literal (no $ or backtick expansion). Do NOT write "cat > file" followed
+by the content on later lines: your command is run as a script, so those lines execute as COMMANDS, not
+input. The here-document is the reliable way to create a file.
+
 Writing and compiling C (it differs from Linux C):
 - Headers: #include <u.h> then #include <libc.h> (that order). There is no stdio.h.
 - Printing: use print("fmt", ...), like printf. There is no printf or puts.
