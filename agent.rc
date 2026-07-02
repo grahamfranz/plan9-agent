@@ -13,10 +13,13 @@
 
 url=http://10.0.2.2:8000/claude
 oifs=$ifs
-# Knobs -- override any of these from the command line the unix way, e.g.
-#   model=claude-opus-4-8 steps=24 maxtok=8192 rc agent.rc <tasks
-# rc imports the environment as variables, so an assignment before the command
-# wins; otherwise these defaults apply. (argv is left free -- stdin is the input.)
+# Knobs -- set any as ordinary rc variables BEFORE running; rc exports them to
+# the child, so they override the defaults below. Set them on their own lines
+# (rc rejects an assignment on the right of a pipe), then pipe or redirect, e.g.
+#   model=claude-opus-4-8
+#   maxtok=8192
+#   rc agent.rc <tasks
+# argv is left free: stdin is the task input.
 if(~ $#model 0){ model=claude-haiku-4-5-20251001 }	# which Claude the proxy calls
 if(~ $#keep 0){ keep=12 }	# how many recent messages to send (plus the task) -- bounds request size
 if(~ $#steps 0){ steps=16 }	# max model<->harness round-trips per task before giving up
@@ -147,7 +150,7 @@ while(~ 1 1){
 		for(i in `{seq 1 $steps}){
 			if(~ `{cat /tmp/done} no){
 				# trim history: keep the first message + the most recent ~12
-				awk -v n=$keep '{l[NR]=$0} END{print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
+				awk '{l[NR]=$0} END{n='^$keep^'; print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
 
 				# build request: system message + the (comma-joined) trimmed history
 				{

@@ -80,12 +80,15 @@ rc /tmp/agent.rc </tmp/agent.in &      # blocks on the fifo, waiting for work
 echo 'summarize /sys/src/cmd/cat.c' >/tmp/agent.in   # queue a task from anywhere
 ```
 
-The knobs are plain variables, overridable the unix way (rc imports the
-environment, so an assignment before the command wins). argv is left free because
+The knobs are plain rc variables. Set them on their own lines first — rc exports
+its variables to the child process, so the agent inherits them (don't put the
+assignment on the right of a pipe; rc rejects that). argv is left free because
 stdin is the input:
 
 ```
-model=claude-opus-4-8 steps=24 maxtok=8192 rc /tmp/agent.rc <tasks
+model=claude-opus-4-8
+maxtok=8192
+rc /tmp/agent.rc <tasks
 ```
 
 - `model` — which Claude the proxy calls (`haiku` cheap, `opus` for hard tasks).
