@@ -31,19 +31,17 @@ histfile=/tmp/agent/history	# append-only, timestamped record of every message (
 sysbase='You are an agent on a Plan 9 (9front) computer using the rc shell.
 
 Work ONE STEP AT A TIME, and ACTUALLY run each step -- never fake it:
-- Reply with brief reasoning, then EXACTLY ONE command inside a code fence with no language tag.
-- Put NOTHING after the fence. Do NOT predict or write what the output will be. End your message at the fence and wait.
-- Do NOT put the word DONE in a message that contains a command.
-- You will then be shown the REAL output. Only after you have seen real output do you continue.
-
-Example of a command turn:
-```
+- To run a command, reply with brief reasoning then EXACTLY ONE command inside a fenced block tagged run, like:
+```run
 ls /bin
 ```
+- ONLY a ```run block is executed. Put NOTHING after it. Do NOT predict or write what the output will be. End your message at the run block and wait.
+- Do NOT put the word DONE in a message that contains a ```run block.
+- You will then be shown the REAL output. Only after you have seen real output do you continue.
 
 Most commands should be text commands that print and exit. To run a GRAPHICAL or INTERACTIVE program (one that opens a window or waits for input), launch it in its own window: window PROG -- this opens a new rio window and returns immediately, so it will NOT hang the loop. Never run a graphical or interactive program directly without window, as that hangs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
 
-To give your final answer, or to ask the user a question, reply with NO code fence. That message is shown to the user and ends your turn; the user can then reply with more.
+To give your final answer, or to ask the user a question, reply with NO ```run block. You MAY quote code or output using ordinary fences (```c, ```, and so on) -- those are shown to the user, never executed; only a ```run block runs. That message is shown to the user and ends your turn; the user can then reply with more.
 
 You run in a restricted per-command namespace: your working directory is /tmp -- create and compile files there. Your home directory is hidden and appears empty. Each command runs in a fresh namespace, so changing where you are does not persist between commands.
 
@@ -124,7 +122,7 @@ if(! test -f $hidefile){
 	echo $home >$hidefile	# seed the default sandbox policy on first run (your edits then persist)
 }
 
-echo 'plan9-agent ready. Type a task and press enter (quit to exit).'
+echo 'plan9-agent ready -- reading tasks from stdin, one per line (quit or ctrl-D to end).'
 echo 'knobs: model '^$model^'  keep '^$keep^'  steps '^$steps^'  maxtok '^$maxtok
 echo -n 'sandbox masks (edit '^$hidefile^' live to change): '; cat $hidefile
 echo 'context (edit/add files in '^$ctxdir^' to shape the prompt):'; ls $ctxdir
@@ -170,9 +168,10 @@ while(~ 1 1){
 				       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n")
 				       gsub(/\001/,"\\"); print }' /tmp/raw >/tmp/content	# restore as single backslashes
 
-				if(grep '```' /tmp/content >/dev/null){
-					# the model issued a command: run it (ignore any premature DONE)
-					awk '/^```/{n++; next} n==1{print}' /tmp/content >/tmp/cmd
+				if(grep '^```run' /tmp/content >/dev/null){
+					# the model issued a command (a ```run block): run just that block.
+					# ordinary ```/```c fences are quoted code in an ANSWER -- never run.
+					awk '/^```run/{f=1; next} f && /^```/{exit} f{print}' /tmp/content >/tmp/cmd
 					runcmd
 				}
 				if not {
