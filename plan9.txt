@@ -31,9 +31,14 @@ Useful files/commands:
 - test -f FILE / -d DIR.  mkdir cp mv rm; chmod +x FILE.
 
 Networking / software:
-- hget URL  fetches over http (verified /bin/hget exists).
-- No package manager (no apt/pkg/brew). Software is in /bin, or built from /sys/src with mk.
-  Do not look for an install step; check /bin first, then /sys/src.
+- hget URL fetches over http/https to stdout. hget -o FILE URL saves to a file.
+  hget -p BODY URL does a POST; hget -r 'Header: value' adds a request header.
+- No apt/pkg/brew -- but you are NOT limited to /bin. To get software that isn't
+  installed, hget its SOURCE and build it. Source is in /sys/src, or fetch it over
+  http from the plan9front mirror, e.g. a single command's source:
+      hget -o /tmp/x.c 'http://git.9front.org/plan9front/plan9front/HEAD/sys/src/cmd/x.c/raw'
+  then build: 6c/6l for one file, or mk in the source dir for multi-file programs.
+  So: check /bin first; if it's missing, fetch the source with hget and build it.
 
 Writing multi-line files: use an rc here-doc with quoted 'EOF' to keep body literal:
     cat > /tmp/f << 'EOF'
