@@ -11,7 +11,6 @@
 # Talks to an OpenAI-style chat endpoint (here a Mac-side proxy to Claude).
 # The Plan 9 reference is loaded from plan9.txt. Trails mirror to the Mac (/up).
 
-url=http://10.0.2.2:8000/claude
 oifs=$ifs
 # Knobs -- set any as ordinary rc variables BEFORE running; rc exports them to
 # the child, so they override the defaults below. Set them on their own lines
@@ -24,6 +23,9 @@ if(~ $#model 0){ model=claude-haiku-4-5-20251001 }	# which Claude the proxy call
 if(~ $#keep 0){ keep=12 }	# how many recent messages to send (plus the task) -- bounds request size
 if(~ $#steps 0){ steps=16 }	# max model<->harness round-trips per task before giving up
 if(~ $#maxtok 0){ maxtok=4096 }	# max tokens per model reply (passed through to the proxy)
+if(~ $#url 0){ url=http://10.0.2.2:8000/claude }	# chat endpoint: the Mac proxy by default; an https provider URL for bridge-less
+if(~ $#direct 0){ direct=no }	# yes = POST straight to $url over https with a Bearer key -- no proxy (needs an OpenAI-shaped provider, e.g. OpenRouter)
+if(~ $#keyfile 0){ keyfile=$home/.llmkey }	# direct mode: file holding the API key. Kept in $home so the per-command sandbox masks it FROM the agent
 hidefile=/tmp/agent.hide	# file listing dirs to mask (one path/line); re-read each command, editable live from any window
 ctxdir=/tmp/agent/context	# system prompt is composed from every file in here (name order); edit/add files to change it
 histfile=/tmp/agent/history	# append-only, timestamped record of every message (NOT trimmed, NOT sent); grep to recall
@@ -160,9 +162,29 @@ while(~ 1 1){
 				} >/tmp/req.json
 
 				ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
-				hget -p $rq $url >/tmp/resp.json
+				if(~ $direct yes){
+						# bridge-less: POST body from stdin (-P: no arg-length limit) to an
+						# OpenAI-shaped https provider, key as a Bearer header. No proxy.
+						key=`{cat $keyfile}
+						hget -P -r 'Content-Type: application/json' -r 'Authorization: Bearer '^$key $url </tmp/req.json >/tmp/resp.json
+					}
+					if not {
+						hget -p $rq $url >/tmp/resp.json	# via the Mac proxy: whole body as one -p arg
+					}
 
-				sed 's/.*"content":"//; s/"},"finish_reason.*//' /tmp/resp.json >/tmp/raw
+				# pull the message content value robustly: find "content":" then read the JSON
+					# string up to the first UNescaped quote. Works whatever fields follow it, so a
+					# raw provider reply (refusal/logprobs/usage siblings) parses like the proxy's.
+					awk '{ full = full $0 }
+					     END{ m = "\"content\":\""; i = index(full, m)
+					          if(i == 0) exit
+					          s = substr(full, i + length(m)); p = 1
+					          while(1){ q = index(substr(s, p), "\"")
+					                    if(q == 0){ printf "%s", s; exit }
+					                    a = p + q - 1; b = 0
+					                    while(a-1-b >= 1 && substr(s, a-1-b, 1) == "\\") b = b + 1
+					                    if(b % 2 == 0){ printf "%s", substr(s, 1, a-1); exit }
+					                    p = a + 1 } }' /tmp/resp.json >/tmp/raw
 				awk '{ gsub(/\\\\/,"\001")	# protect escaped backslashes first
 				       gsub(/\\u003c/,"<"); gsub(/\\u003e/,">"); gsub(/\\u0026/,"\\&")
 				       gsub(/\\"/,"\""); gsub(/\\t/,"\t"); gsub(/\\n/,"\n")
