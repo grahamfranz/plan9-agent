@@ -58,6 +58,41 @@ command, and a command can never corrupt the harness's own view. The policy path
 is a single variable (`hidefile`) — point it at `/mnt/agent/hide` later and
 nothing else changes.
 
+## Running it
+
+The agent reads **one task per line from stdin**, so it composes like any unix
+filter — the "where do tasks come from" question lives outside the agent, not in
+it:
+
+```
+r agent.rc                 # interactive: type tasks, ctrl-D or 'quit' to exit
+echo 'build hello.c' | rc /tmp/agent.rc     # one-shot: run one task, exit at EOF
+rc /tmp/agent.rc <tasks.txt                 # batch: one full task per line
+```
+
+Because it exits on EOF, you get a **daemon for free** — no daemon code in the
+agent. Point its stdin at a fifo and have anything (another window, `cron`, an
+`ssh` session) drop tasks in:
+
+```
+mkfifo /tmp/agent.in
+rc /tmp/agent.rc </tmp/agent.in &      # blocks on the fifo, waiting for work
+echo 'summarize /sys/src/cmd/cat.c' >/tmp/agent.in   # queue a task from anywhere
+```
+
+The knobs are plain variables, overridable the unix way (rc imports the
+environment, so an assignment before the command wins). argv is left free because
+stdin is the input:
+
+```
+model=claude-opus-4-8 steps=24 maxtok=8192 rc /tmp/agent.rc <tasks
+```
+
+- `model` — which Claude the proxy calls (`haiku` cheap, `opus` for hard tasks).
+- `steps` — max model↔harness round-trips per task before it gives up (default 16).
+- `maxtok` — max tokens per model reply, passed through to the proxy (default 4096).
+- `keep` — how many recent messages to send each turn (bounds request size).
+
 ## Files
 
 - `agent.rc` — the agent loop.
@@ -68,10 +103,12 @@ nothing else changes.
 
 ## Status
 
-Working. It's an interactive REPL that runs each command in a per-command
-namespace sandbox with a live-editable policy, keeps conversation context across
-prompts, times out hung commands, and launches graphical programs in their own
-window. It has written, compiled, debugged, and run C programs from vague prompts.
+Working. It's a stdin filter — interactive at a prompt, or fed by a pipe, a
+file, or a fifo (a cron-able daemon with no daemon code). It runs each command in
+a per-command namespace sandbox with a live-editable policy, composes its system
+prompt from a `context/` directory, keeps conversation context across tasks, times
+out hung commands, and launches graphical programs in their own window. It has
+written, compiled, debugged, and run C programs from vague prompts.
 
 Rough edges / next: the dev proxy (`devserver.py`) is throwaway — a real install
 talks to a model directly (9front has TLS); large conversations still strain the

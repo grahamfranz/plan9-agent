@@ -12,9 +12,15 @@
 # The Plan 9 reference is loaded from plan9.txt. Trails mirror to the Mac (/up).
 
 url=http://10.0.2.2:8000/claude
-model=claude-haiku-4-5-20251001
 oifs=$ifs
-keep=12		# how many recent messages to send (plus the task) -- bounds request size
+# Knobs -- override any of these from the command line the unix way, e.g.
+#   model=claude-opus-4-8 steps=24 maxtok=8192 rc agent.rc <tasks
+# rc imports the environment as variables, so an assignment before the command
+# wins; otherwise these defaults apply. (argv is left free -- stdin is the input.)
+if(~ $#model 0){ model=claude-haiku-4-5-20251001 }	# which Claude the proxy calls
+if(~ $#keep 0){ keep=12 }	# how many recent messages to send (plus the task) -- bounds request size
+if(~ $#steps 0){ steps=16 }	# max model<->harness round-trips per task before giving up
+if(~ $#maxtok 0){ maxtok=4096 }	# max tokens per model reply (passed through to the proxy)
 hidefile=/tmp/agent.hide	# file listing dirs to mask (one path/line); re-read each command, editable live from any window
 ctxdir=/tmp/agent/context	# system prompt is composed from every file in here (name order); edit/add files to change it
 histfile=/tmp/agent/history	# append-only, timestamped record of every message (NOT trimmed, NOT sent); grep to recall
@@ -116,6 +122,7 @@ if(! test -f $hidefile){
 }
 
 echo 'plan9-agent ready. Type a task and press enter (quit to exit).'
+echo 'knobs: model '^$model^'  keep '^$keep^'  steps '^$steps^'  maxtok '^$maxtok
 echo -n 'sandbox masks (edit '^$hidefile^' live to change): '; cat $hidefile
 echo 'context (edit/add files in '^$ctxdir^' to shape the prompt):'; ls $ctxdir
 >/tmp/messages		# the conversation PERSISTS across prompts (so follow-ups have context)
@@ -137,14 +144,14 @@ while(~ 1 1){
 		buildsys		# recompose the prompt from $ctxdir each turn, so live edits to context apply
 		echo no >/tmp/done
 
-		for(i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16){
+		for(i in `{seq 1 $steps}){
 			if(~ `{cat /tmp/done} no){
 				# trim history: keep the first message + the most recent ~12
-				awk '{l[NR]=$0} END{n=12; print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
+				awk -v n=$keep '{l[NR]=$0} END{print l[1]; s=NR-n+1; if(s<2)s=2; for(i=s;i<=NR;i++)print l[i]}' /tmp/messages >/tmp/hist
 
 				# build request: system message + the (comma-joined) trimmed history
 				{
-					echo -n '{"model":"'^$model^'","messages":[{"role":"system","content":"'
+					echo -n '{"model":"'^$model^'","max_tokens":'^$maxtok^',"messages":[{"role":"system","content":"'
 					esc /tmp/sys
 					echo -n '"},'
 					awk 'NR>1{printf ","} {printf "%s",$0}' /tmp/hist

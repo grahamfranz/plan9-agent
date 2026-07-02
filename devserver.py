@@ -22,7 +22,7 @@ def claude(req):
             conv.append({'role': m['role'], 'content': m.get('content', '')})
     body = {
         'model': req.get('model', 'claude-haiku-4-5-20251001'),
-        'max_tokens': 4096,
+        'max_tokens': req.get('max_tokens', 4096),
         'system': system,
         'messages': conv,
     }
