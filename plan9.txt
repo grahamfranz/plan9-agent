@@ -4,7 +4,7 @@ Shell is rc, not bash:
 - Pipes: a | b.  Logical: cmd && cmd, cmd || cmd.
 - Command substitution is `{cmd} (NOT $(...)). Verified: `{echo hi | wc -c} -> 3.
 - Variables are lists: x=(a b); $x.  Assign: x=val.
-- Redirect: >file  >>file  <file.  Stderr: >[2]file.  Merge stderr into stdout: >[2=1].
+- Redirect: >file  >>file  <file.  Stderr: >[2]file (NOT bash's 2>file).  Merge stderr into stdout: >[2=1].
 - No <(...) process substitution, no <<< here-strings. rc DOES have here-docs (see below).
 - Conditionals: if(test -f x){...}; if not {...}.  Loops: for(i in a b c){...}.
 
@@ -21,9 +21,11 @@ C toolchain (amd64) -- VERIFIED:
 Command differences an agent gets wrong (VERIFIED):
 - grep uses egrep regex but has NO -E flag: -E gives a usage error.
   Write alternation directly: grep 'web|xyz'  (verified: matches "web http ftp").
-- ls has NO -a flag (usage error). Flags it accepts: -dlmnpqrstuFQT.  lc = columnar.
-- NO head/tail/find/od. Use: sed Nq FILE (first N lines, verified), sed -n 'A,Bp' FILE,
-  du -a DIR | grep NAME (to search files).
+- ls has NO -a and NO -R (recursive) flag -- both give a usage error. Accepts: -dlmnpqrstuFQT.  lc = columnar.
+- NO find, NO head/tail, NO od. First N lines: sed Nq FILE (not head). Line range: sed -n 'A,Bp' FILE.
+- To recurse a directory tree, use du -a DIR: it prints "SIZE(KB) PATH" for EVERY file AND dir under it.
+  There is NO -type filter, and directories aggregate their contents so they sort ABOVE individual files --
+  to find the largest FILE, look past the directory rows yourself. Search names: du -a DIR | grep NAME.
 - sed s/a/b/g substitutes; sort / sort -n / sort -r; uniq / uniq -c; wc / wc -l.
 
 Useful files/commands:

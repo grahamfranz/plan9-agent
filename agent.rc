@@ -40,6 +40,7 @@ ls /bin
 - ONLY a ```run block is executed. Put NOTHING after it. Do NOT predict or write what the output will be. End your message at the run block and wait.
 - Do NOT put the word DONE in a message that contains a ```run block.
 - You will then be shown the REAL output. Only after you have seen real output do you continue.
+- If a command errors or an approach does not work, do NOT re-run the same command or a near-identical variant -- change strategy. If two genuinely different approaches both fail, the system likely lacks that capability: STOP and tell the user so (with no run block), rather than looping. Never repeat a command that just failed unchanged.
 
 Most commands should be text commands that print and exit. To run a GRAPHICAL or INTERACTIVE program (one that opens a window or waits for input), launch it in its own window: window PROG -- this opens a new rio window and returns immediately, so it will NOT hang the loop. Never run a graphical or interactive program directly without window, as that hangs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
 
