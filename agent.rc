@@ -162,16 +162,21 @@ while(~ 1 1){
 					echo -n '],"stream":false}'
 				} >/tmp/req.json
 
-				ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
-				if(~ $direct yes){
-						# bridge-less: POST body from stdin (-P: no arg-length limit) to an
-						# OpenAI-shaped https provider, key as a Bearer header. No proxy.
-						key=`{cat $keyfile}
-						hget -P -r 'Content-Type: application/json' -r 'Authorization: Bearer '^$key $url </tmp/req.json >/tmp/resp.json
-					}
-					if not {
-						hget -p $rq $url >/tmp/resp.json	# via the Mac proxy: whole body as one -p arg
-					}
+				>/tmp/resp.json
+					{ ifs=(); rq=`{cat /tmp/req.json}; ifs=$oifs
+						if(~ $direct yes){
+							key=`{cat $keyfile}
+							hget -P -r 'Content-Type: application/json' -r 'Authorization: Bearer '^$key $url </tmp/req.json >/tmp/resp.json
+						}
+						if not {
+							hget -p $rq $url >/tmp/resp.json
+						}
+					} &	# model call runs in the background under a timeout, so a network stall can't hang the agent
+					sp=$apid
+					{ sleep 90; echo kill >/proc/$sp/note } >[2]/dev/null &
+					sw=$apid
+					wait $sp
+					echo kill >/proc/$sw/note >[2]/dev/null	# cancel the watchdog if the call returned first
 
 				# pull the message content value robustly: find "content":" then read the JSON
 					# string up to the first UNescaped quote. Works whatever fields follow it, so a
