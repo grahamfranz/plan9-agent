@@ -23,6 +23,9 @@ Command differences an agent gets wrong (VERIFIED):
   Write alternation directly: grep 'web|xyz'  (verified: matches "web http ftp").
 - ls has NO -a and NO -R (recursive) flag -- both give a usage error. Accepts: -dlmnpqrstuFQT.  lc = columnar.
 - NO find, NO head/tail, NO od. First N lines: sed Nq FILE (not head). Line range: sed -n 'A,Bp' FILE.
+- NO which. To test whether a command exists: test -f /bin/NAME, or ls /bin/NAME, or whatis NAME.
+  When an ls listing is truncated, do NOT conclude from the visible slice -- grep for the name:
+  ls /bin | grep '^NAME'  (e.g. hoc sorts under h and is missed if you only see the top of the list).
 - To recurse a directory tree, use du -a DIR: it prints "SIZE(KB) PATH" for EVERY file AND dir under it.
   There is NO -type filter, and directories aggregate their contents so they sort ABOVE individual files --
   to find the largest FILE, look past the directory rows yourself. Search names: du -a DIR | grep NAME.
@@ -31,6 +34,9 @@ Command differences an agent gets wrong (VERIFIED):
   with awk, e.g. the time is `{date | awk '{print $4}'}. Seconds since epoch: date -n.
 
 Useful files/commands:
+- Calculator: hoc is the standard interactive calculator (C-like floating-point expressions);
+  dc (RPN) also exists. abaco and mothra are WEB BROWSERS, NOT calculators -- do not confuse
+  "abaco" with "abacus". Never guess what a command does from its name: whatis NAME or man NAME.
 - cat /dev/user, /dev/sysname, /dev/time, /dev/cputype.  date; cal; seq A B; ps; who.
 - test -f FILE / -d DIR.  mkdir cp mv rm; chmod +x FILE.
 - rc prompt: $prompt is a STATIC string (rc does NOT re-evaluate it, so command substitution in it
