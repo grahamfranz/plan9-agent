@@ -27,10 +27,16 @@ Command differences an agent gets wrong (VERIFIED):
   There is NO -type filter, and directories aggregate their contents so they sort ABOVE individual files --
   to find the largest FILE, look past the directory rows yourself. Search names: du -a DIR | grep NAME.
 - sed s/a/b/g substitutes; sort / sort -n / sort -r; uniq / uniq -c; wc / wc -l.
+- date takes NO +FORMAT (Unix-only). Plain date prints "Wed Jul 4 HH:MM:SS TZ YYYY"; pull fields
+  with awk, e.g. the time is `{date | awk '{print $4}'}. Seconds since epoch: date -n.
 
 Useful files/commands:
 - cat /dev/user, /dev/sysname, /dev/time, /dev/cputype.  date; cal; seq A B; ps; who.
 - test -f FILE / -d DIR.  mkdir cp mv rm; chmod +x FILE.
+- rc prompt: $prompt is a STATIC string (rc does NOT re-evaluate it, so command substitution in it
+  runs once, not per prompt). For a LIVE prompt, define fn prompt (rc runs it before each prompt):
+  fn prompt { prompt=(`{date | awk '{print $4}'}^'% ' ' ') }. Per-user shell startup goes in
+  $home/lib/profile (sourced by rcmain for login shells) -- NOT the shared /rc/lib/rcmain.
 
 Networking / software:
 - hget URL fetches over http/https to stdout. hget -o FILE URL saves to a file.
