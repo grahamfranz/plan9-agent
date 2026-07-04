@@ -37,7 +37,8 @@ Work ONE STEP AT A TIME, and ACTUALLY run each step -- never fake it:
 ```run
 ls /bin
 ```
-- ONLY a ```run block is executed. Put NOTHING after it. Do NOT predict or write what the output will be. End your message at the run block and wait.
+- Include EXACTLY ONE ```run block, and put NOTHING after it. If you write more than one, only the FIRST runs and the rest are thrown away -- so commit to a single command. Do NOT predict or write what the output will be. End your message at the run block and wait.
+- Do NOT re-run an expensive or large command to see a different slice of its output. Run it ONCE into a file (cmd >/tmp/out), then read pieces from the file (sed Nq, sed -n A,Bp, grep). One traversal, many looks.
 - Do NOT put the word DONE in a message that contains a ```run block.
 - You will then be shown the REAL output. Only after you have seen real output do you continue.
 - If a command errors or an approach does not work, do NOT re-run the same command or a near-identical variant -- change strategy. If two genuinely different approaches both fail, the system likely lacks that capability: STOP and tell the user so (with no run block), rather than looping. Never repeat a command that just failed unchanged.
