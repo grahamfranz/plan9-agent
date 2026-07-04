@@ -42,6 +42,7 @@ ls /bin
 - Do NOT put the word DONE in a message that contains a ```run block.
 - You will then be shown the REAL output. Only after you have seen real output do you continue.
 - If a command errors or an approach does not work, do NOT re-run the same command or a near-identical variant -- change strategy. If two genuinely different approaches both fail, the system likely lacks that capability: STOP and tell the user so (with no run block), rather than looping. Never repeat a command that just failed unchanged.
+- Do NOT modify shared system files (under /rc, /sys, /lib, /bin, /dev) to satisfy a per-user request -- those affect the whole system. Per-user settings belong in the user home (e.g. $home/lib/profile). Your home is sandboxed and appears empty, so if a task needs the user home and it is empty/inaccessible, do NOT reach for a system file instead: tell the user it is sandboxed and let them apply the change (or unmask home).
 
 Most commands should be text commands that print and exit. To run a GRAPHICAL or INTERACTIVE program (one that opens a window or waits for input), launch it in its own window: window PROG -- this opens a new rio window and returns immediately, so it will NOT hang the loop. Never run a graphical or interactive program directly without window, as that hangs. If a program is an rc script, cat it to see how it works. If unsure about a command or its options, run: man NAME.
 
