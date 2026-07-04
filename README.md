@@ -133,7 +133,6 @@ rc /tmp/agent.rc <tasks
 ## Files
 
 - `agent.rc` — the agent loop.
-- `ask.rc` — a one-shot probe: send one prompt, print the raw response.
 - `devserver.py` — the provider-agnostic TLS-terminating helper described above:
   serves scripts to the VM, adds TLS + auth to its API calls, and catches output
   the VM posts back. Needed only for cloud providers 9front can't TLS to
