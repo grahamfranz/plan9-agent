@@ -119,7 +119,12 @@ model=qwen2.5:3b
 rc /tmp/agent.rc <tasks
 ```
 
-- `url` — chat endpoint (a helper, or an endpoint the VM can reach directly).
+- `base` — base URL of the dev helper (`http://10.0.2.2:8000` by default; `10.0.2.2`
+  is the QEMU host as seen from inside the guest). The context fetch and the `/up`
+  upload use it, and `url` defaults to `$base/claude`. Point it elsewhere if the
+  helper isn't on the QEMU host.
+- `url` — chat endpoint (the helper's `/claude`, or a provider URL the VM reaches
+  directly in `direct=yes` mode).
 - `direct` — `yes` to POST straight to `url` over HTTP(S); `no` (default) to go
   via the helper.
 - `keyfile` — file holding the API key for direct mode (default `$home/.llmkey`,
@@ -129,6 +134,11 @@ rc /tmp/agent.rc <tasks
 - `steps` — max model↔harness round-trips per task before it gives up (default 16).
 - `maxtok` — max tokens per model reply (default 4096).
 - `keep` — how many recent messages to send each turn (bounds request size).
+
+> **Running the helper for a QEMU guest:** start it with `BIND=0.0.0.0`
+> (`BIND=0.0.0.0 python3 devserver.py`). A slirp guest cannot reach a
+> loopback-bound service at `10.0.2.2`; `0.0.0.0` exposes the helper on your LAN,
+> so do it only on a trusted network.
 
 ## Files
 

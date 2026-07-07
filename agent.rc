@@ -23,7 +23,8 @@ if(~ $#model 0){ model=claude-haiku-4-5-20251001 }	# which Claude the proxy call
 if(~ $#keep 0){ keep=12 }	# how many recent messages to send (plus the task) -- bounds request size
 if(~ $#steps 0){ steps=16 }	# max model<->harness round-trips per task before giving up
 if(~ $#maxtok 0){ maxtok=4096 }	# max tokens per model reply (passed through to the proxy)
-if(~ $#url 0){ url=http://10.0.2.2:8000/claude }	# chat endpoint: the Mac proxy by default; an https provider URL for bridge-less
+if(~ $#base 0){ base=http://10.0.2.2:8000 }	# dev-helper base URL (devserver): the /plan9.txt fetch and /up upload use it. 10.0.2.2 = the QEMU host as seen from inside the guest; change if the helper runs elsewhere
+if(~ $#url 0){ url=$base^/claude }	# chat endpoint: the helper's /claude proxy by default; set to an https provider URL for bridge-less (direct=yes)
 if(~ $#direct 0){ direct=no }	# yes = POST straight to $url over https with a Bearer key -- no proxy (needs an OpenAI-shaped provider, e.g. OpenRouter)
 if(~ $#keyfile 0){ keyfile=$home/.llmkey }	# direct mode: file holding the API key. Kept in $home so the per-command sandbox masks it FROM the agent
 hidefile=/tmp/agent.hide	# file listing dirs to mask (one path/line); re-read each command, editable live from any window
@@ -69,7 +70,7 @@ fn addmsg {	# $1=role  $2=file -> append to the sent messages AND the timestampe
 
 fn upload {
 	ifs=(); b=`{cat $1}; ifs=$oifs
-	hget -p $b http://10.0.2.2:8000/up >/dev/null
+	hget -p $b $base^/up >/dev/null
 }
 
 fn dbg {
@@ -114,7 +115,7 @@ fn buildsys {	# compose /tmp/sys (the system prompt) from every file in $ctxdir,
 # seed the context dir once, from the built-in prompt + the fetched reference. after that the
 # files in $ctxdir are the source of truth: edit them (or have a model write them) to change the
 # agent's context. rm -r $ctxdir to reseed from the defaults below.
-hget http://10.0.2.2:8000/plan9.txt >/tmp/plan9
+hget $base^/plan9.txt >/tmp/plan9
 if(! test -d $ctxdir){
 	mkdir -p $ctxdir
 	echo $sysbase >$ctxdir/00-system

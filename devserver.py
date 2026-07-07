@@ -14,8 +14,10 @@
 #   KEYFILE   file holding the API key (default depends on PROVIDER; may be empty
 #             or /dev/null for keyless local servers like Ollama)
 #   BIND      interface to listen on (default 127.0.0.1 -- loopback only, so the
-#             proxy is not an open relay on your LAN. Set 0.0.0.0 only if the VM
-#             cannot otherwise reach it.)
+#             proxy is not an open relay on your LAN. NOTE: a QEMU slirp guest
+#             CANNOT reach a loopback-bound host service at 10.0.2.2, so for the
+#             default QEMU setup you MUST run with BIND=0.0.0.0 -- which exposes
+#             the proxy on your LAN, so only do it on a trusted network.)
 #   PORT      port (default 8000)
 # e.g. a local Ollama, no crypto at all:
 #   PROVIDER=openai UPSTREAM=http://localhost:11434/v1/chat/completions \
