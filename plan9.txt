@@ -30,13 +30,16 @@ Command differences an agent gets wrong (VERIFIED):
   There is NO -type filter, and directories aggregate their contents so they sort ABOVE individual files --
   to find the largest FILE, look past the directory rows yourself. Search names: du -a DIR | grep NAME.
 - sed s/a/b/g substitutes; sort / sort -n / sort -r; uniq / uniq -c; wc / wc -l.
+- NO cut: use awk for fields, e.g. awk -F: '{print $3}'. NO cp -r: copy a directory tree with
+  dircp SRC DST (or tar). rc does NOT expand ~ (tilde) -- use $home. Kill a process: echo kill >/proc/PID/ctl.
 - date takes NO +FORMAT (Unix-only). Plain date prints "Wed Jul 4 HH:MM:SS TZ YYYY"; pull fields
   with awk, e.g. the time is `{date | awk '{print $4}'}. Seconds since epoch: date -n.
 
 Useful files/commands:
-- Calculator: hoc is the standard interactive calculator (C-like floating-point expressions);
-  dc (RPN) also exists. abaco and mothra are WEB BROWSERS, NOT calculators -- do not confuse
-  "abaco" with "abacus". Never guess what a command does from its name: whatis NAME or man NAME.
+- Calculator: for one-shot math run hoc -e '2+2' (non-interactive, prints the answer -- verifiable,
+  no window). hoc alone is an interactive calculator; dc (RPN) also exists. abaco and mothra are WEB
+  BROWSERS, NOT calculators -- do not confuse "abaco" with "abacus". Never guess what a command does
+  from its name: whatis NAME or man NAME.
 - cat /dev/user, /dev/sysname, /dev/time, /dev/cputype.  date; cal; seq A B; ps; who.
 - test -f FILE / -d DIR.  mkdir cp mv rm; chmod +x FILE.
 - rc prompt: $prompt is a STATIC string (rc does NOT re-evaluate it, so command substitution in it
